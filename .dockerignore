@@ -1,0 +1,11 @@
+.git
+.idea
+.DS_Store
+backend/.venv
+backend/__pycache__
+backend/*/__pycache__
+frontend/node_modules
+frontend/dist
+android-app
+azure-backend
+azure-dashboard

@@ -1,0 +1,66 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: desk_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: desk_user
+      POSTGRES_PASSWORD: desk_password
+      POSTGRES_DB: desk_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U desk_user -d desk_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: desk_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: ai-lead-voice-desk-backend:latest
+    container_name: desk_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg2://desk_user:desk_password@db:5432/desk_db
+      REDIS_URL: redis://redis:6379/0
+      SARVAM_API_KEY: ${SARVAM_API_KEY:-mock_sarvam_key}
+      SECRET_KEY: ${SECRET_KEY:-desk_secret_key_32_bytes_long_here}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
+      ENFORCE_CALLING_HOURS: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: ai-lead-voice-desk-frontend:latest
+    container_name: desk_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+      - "3001:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:

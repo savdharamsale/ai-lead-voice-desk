@@ -1,0 +1,153 @@
+
+India-First AI Lead Generation & Voice Calling SaaS
+Updated research, architecture, provider evaluation and coding-agent master prompt
+Research updated: 19 October 2026 | Target market: India | AI voice: Sarvam AI
+1. Executive recommendation
+Build a multi-tenant SaaS for lead intake, AI-powered outbound calling, inbound call handling, lead qualification, human escalation, and WhatsApp/Instagram follow-up. Treat India-based cloud telephony as a first-class requirement. Use Sarvam Voice Agents as the default managed voice stack for the MVP, and implement a provider adapter so telephony can be changed without rewriting CRM, campaigns, or tenant workflows.
+Recommended first proof of concept: Sarvam Voice Agents + Sarvam-managed Vobiz telephony for the fastest setup, then validate Exotel for a production India-focused deployment. Keep Tata Tele Smartflo as an enterprise alternative. Do not promise call transfer on every provider: Sarvam’s current documentation says end-to-end self-serve call transfer is supported for Vobiz and Plivo; it is not self-serve on other providers. Validate transfer, outbound permissions, number availability, KYC, and commercial terms with each provider before selecting a production configuration.
+2. India telephony research and shortlist
+Provider / path
+Best role in the product
+Evidence / fit
+Validate before launch
+Sarvam-managed telephony (Vobiz underneath)
+Fastest MVP and pilot
+Sarvam documents number rental, inbound deployments, campaigns and telephony billing.
+KYC, number type and series, geographic availability, outbound campaign limits, transfer destinations, taxes and actual rates.
+Exotel
+Preferred Indian production candidate
+Sarvam publishes an Exotel integration guide; Exotel is an India-focused cloud telephony provider with APIs.
+Voicebot/media-streaming plan, outbound API access, number provisioning, transfer support with chosen Sarvam mode, concurrency, recording and per-minute charges.
+Tata Tele Smartflo
+Enterprise/telecom-aligned alternative
+Official Smartflo API docs describe inbound/outbound calls, IVR, SMS, notes and campaigns; Sarvam lists Smartflo as a BYO provider.
+Confirm live audio/voicebot integration path, number and CLI rules, API access, call transfer, KYC, SLA and commercial quote.
+Vobiz direct account
+Alternative direct telephony route
+Sarvam documents connecting a Vobiz account and using its numbers for inbound and outbound campaigns; transfer is supported end to end.
+Account onboarding, Indian number eligibility, concurrent calls, billing, KYC and support/SLA.
+Knowlarity / MyOperator
+Discovery candidates, not assumed integrations
+Potential Indian cloud telephony/contact-centre alternatives; not selected as default in this research.
+Obtain current API docs and written confirmation for bidirectional media/voicebot, outbound calling, webhook events, transfer, number portability and pricing.
+3. Indicative Sarvam costs (provider charges are additional)
+Sarvam’s published Voice Agents pricing page currently lists pay-as-you-go at ₹3.50 per agent minute, Pro at ₹3.25/min with ₹9,999/month, and Growth at ₹3.15/min with ₹49,999/month; rates exclude GST. The same page lists Sarvam/Vobiz telephony at ₹0.20 per 30-second pulse, PSTN forwarding at ₹0.40 per 30-second pulse, SIP forwarding at ₹0.35 per 30-second pulse, and number rental at ₹59 per number per 30 days. The pricing page notes that telephony is billed separately and that BYO telephony is billed directly by the provider. Treat these as indicative published rates, not a quote; recheck before procurement.
+Example only: a 45-second call on pay-as-you-go with Sarvam telephony is billed as one agent minute (₹3.50) plus two 30-second telephony pulses (₹0.40), before GST and any other applicable charges. A human-forwarded leg may add forwarding charges. Build tenant-level usage metering, budget caps, alerts and invoice reconciliation into the SaaS.
+4. Product scope and workflows
+Tenant onboarding
+Create organization, workspace, users, role assignments, industry template, business profile, phone configuration, channel connections, consent settings, billing plan and usage limits.
+Lead intake
+Manual entry, CSV import, website forms, ad lead webhooks, CRM integrations, WhatsApp, Instagram messaging, and generic authenticated webhook/API. Store source, campaign, consent evidence, timestamps and attribution.
+Website understanding
+Crawl only tenant-authorized public URLs, obey robots.txt and rate limits, restrict to allowed domains, block private-network/localhost targets, strip scripts and navigation noise, extract pages and facts, and let a tenant review/approve the knowledge base. Support PDFs and uploaded brochures.
+Script generation
+Generate a draft voice script from approved facts, industry template, desired conversion, qualification questions, tone, supported languages, fallback rules, prohibited claims, and escalation triggers. Require human review before activation.
+Outbound calls
+Admin can click-to-call a specific lead; approved campaigns can schedule calls within tenant-defined windows. Check consent and suppression lists before dialing. Apply retry limits, deduplication, concurrency limits, timeouts and idempotency.
+Inbound calls
+Route business number to the correct tenant and agent. Greet transparently, disclose AI identity where appropriate, identify intent, answer from approved facts, qualify lead, create follow-up task, or transfer to the tenant’s configured human destination.
+Browser calling / click-to-call
+Website visitor may request a callback or click a call control. Do not assume the browser itself can place a PSTN call without a supported WebRTC/SIP provider; implement callback as the portable MVP.
+Lead outcome and next action
+Record outcome, summary, transcript/recording references if enabled, confidence, qualification fields, follow-up owner, due date, opt-out status and CRM stage. Escalations create a task and notify the right user.
+WhatsApp and Instagram
+Use official Meta APIs or an approved BSP. Capture inbound messages as conversations/leads; send only permitted messages using approved templates where required. Support handover to a human and record consent/channel events.
+Industry templates
+Hotel: dates, guests, room type, event/restaurant requirements. Hospital: department/service, preferred appointment window and callback; avoid diagnosis/clinical advice and do not collect unnecessary patient data. Food business: menu/catering, event size, delivery area and booking intent.
+5. Architecture
+Frontend: Next.js/TypeScript dashboard. Backend: FastAPI or NestJS modular API. Database: PostgreSQL with tenant_id on all tenant-owned records and row-level security as defence in depth. Queue: SQS, Redis/BullMQ, or equivalent for campaign jobs and webhook processing. Object storage: S3-compatible storage for uploaded files and optional recordings. Search/RAG: PostgreSQL full-text + pgvector initially. Secrets: AWS Secrets Manager/KMS or equivalent. Observability: structured logs, metrics, traces, tenant-aware audit events and provider call IDs.
+Core modules: Identity & Tenancy; Lead CRM; Website Knowledge Ingestion; Agent/Prompt Studio; Campaign Scheduler; Telephony Adapter; Sarvam Adapter; Channel Connectors; Conversation & Call Events; Workflow/Task Engine; Billing & Usage; Consent/Compliance; Admin & Audit.
+Provider adapter contract should expose: validate_credentials, provision_or_import_number, initiate_call, route_inbound, transfer_call, hangup, get_call_status, receive_webhook, fetch_recording_metadata, and get_usage. Each capability must be feature-flagged and declared per provider; do not imply all adapters implement all features.
+6. Minimum data model
+organizations, users, memberships, roles, subscriptions, usage_events, provider_connections, phone_numbers, channel_connections, business_profiles, allowed_domains, crawled_pages, knowledge_documents, knowledge_chunks, agent_templates, agent_versions, scripts, campaigns, campaign_recipients, leads, lead_sources, consent_events, suppression_entries, calls, call_events, transcripts, call_summaries, conversations, messages, tasks, escalation_rules, audit_logs, webhook_events, integration_syncs.
+Every tenant-owned table must include organization_id; enforce tenant scope in authorization and database policies. Keep provider credentials encrypted and never return them to the browser. Store recordings only when enabled and justified; apply tenant retention and deletion policies.
+7. Compliance, privacy and responsible calling in India
+Do not treat a lead phone number as proof of consent. Before promotional calls or messages, capture purpose-specific consent or another valid basis as confirmed by Indian telecom/privacy counsel and the relevant provider. TRAI guidance for commercial communications describes Principal Entity registration, registered headers/content templates and consent registration for applicable communications. Voice-call rules and operational requirements differ by call type and telecom route; get written provider guidance on applicable TCCCPR/DLT and voice-DLT requirements before production. Maintain suppression/opt-out lists, quiet hours, campaign purpose, consent evidence, retries, complaint handling and audit logs.
+For privacy, implement notice and purpose limitation, least-privilege access, encryption in transit/at rest, retention limits, export/deletion workflows, processor/vendor review and incident response. Obtain appropriate notice/consent for call recording and transcript processing. Hospital workflows must avoid medical diagnosis or emergency triage by the sales agent; provide a clear human/emergency route and minimize sensitive data.
+8. Delivery roadmap
+Phase 0 — Provider proof: provision one eligible Indian number; test inbound, outbound, callback, transfer, hangup webhooks, DTMF, audio quality, Hindi/Telugu/English and billing.
+Phase 1 — MVP: tenant onboarding, RBAC, lead CRUD/import, consent gate, website crawler and review, script builder, click-to-call, campaign queue, Sarvam integration, call logs and human escalation.
+Phase 2 — Channels: WhatsApp Business Platform and Instagram Messaging API, shared inbox, opt-out and template management, notifications and CRM webhooks.
+Phase 3 — SaaS hardening: metering, plan limits, invoices, provider failover strategy, audit dashboards, data retention, load tests, security tests and operational runbooks.
+9. Acceptance criteria
+Tenant A cannot read or mutate Tenant B records through UI, API, exports, jobs or object-storage URLs.
+Every outbound call is blocked when consent is missing where required, the lead is suppressed, or the tenant is outside allowed calling hours.
+A test lead can be called from the dashboard; call status and webhook events are idempotently persisted.
+An inbound call reaches the correct tenant and agent; requesting a human triggers transfer when the selected provider supports it, otherwise a documented fallback.
+Website facts used by the agent link to source URLs or approved uploaded documents; unsupported facts are not invented.
+Call summary, lead stage, qualification fields, next action, owner and due date are persisted.
+Provider costs and Sarvam usage are recorded separately and reconciled to each tenant.
+WhatsApp/Instagram use official authorized integrations, respect platform messaging rules and record opt-outs.
+Automated tests cover tenant isolation, consent gates, webhook signatures, duplicate events, retries, secrets handling and deletion/retention.
+10. Copy-paste master prompt for Google Antigravity / AI coding agent
+You are the principal product architect and senior full-stack engineer building an India-first multi-tenant SaaS named “AI Lead & Voice Desk”.
+Mission
+Build a production-oriented SaaS that ingests leads, understands each tenant’s business from its approved website/documents, creates reviewable voice scripts, makes and receives calls using Sarvam AI plus Indian cloud telephony, qualifies leads, transfers calls to humans when supported, logs outcomes, schedules next actions, and connects official WhatsApp Business and Instagram Messaging APIs.
+Non-Negotiable India Telephony Requirements
+1. Make Indian telephony the default. Evaluate Sarvam-managed telephony (powered by Vobiz), Exotel, and Tata Tele Smartflo first. Keep Vobiz direct as an option. Do not default to Twilio.
+2. Sarvam documents self-serve connections for Exotel, Smartflo, Vobiz and other providers. Sarvam’s documented end-to-end self-serve call transfer support currently identifies Vobiz and Plivo; do not assume transfer works identically on Exotel or Smartflo. Add provider capability flags and graceful fallback.
+3. For MVP, create a TelephonyProvider interface and implement the first provider selected after a real proof-of-concept. Prefer Sarvam-managed Vobiz for the fastest test and validate Exotel for production before committing. Do not hard-code provider-specific logic into CRM/campaign services.
+4. Do not invent number availability, API capabilities, pricing, call quotas or compliance approvals. Put provider-specific unknowns in configuration/docs and require a manual verification checklist.
+5. Make all prices configurable. Current published Sarvam rates are indicative only and must be rechecked before procurement; telephony is billed separately from agent minutes.
+Core Features
+- Multi-tenant organizations/workspaces with secure tenant isolation, RBAC, user invites, audit trails and tenant-specific settings.
+- Tenant onboarding wizard: business details, industry, website/domain, languages, phone provider, numbers, admin escalation destinations, consent policies, channels, and billing plan.
+- Leads from manual entry, CSV, REST API, web forms, ad/social integrations and inbound WhatsApp/Instagram. Track source, campaign, timestamps and consent provenance.
+- Lead CRM with stages: New, Needs Review, Eligible to Contact, Queued, Attempted, Connected, Qualified, Follow-up, Escalated, Converted, Not Interested, Invalid, Do Not Contact.
+- Website/document ingestion: crawl only authorized public URLs, obey robots.txt and rate limits, restrict domains, prevent SSRF (block localhost/private IPs and unsafe redirects), parse HTML/PDF, remove boilerplate, extract factual claims, retain source URL/page and crawl timestamp, allow tenant review/approval, and re-crawl on demand.
+- Prompt/script studio: generate draft scripts grounded only in approved knowledge, configurable tone/language, qualification questions, opening disclosure, objection handling, opt-out handling, fallback, and transfer rules. Human approval/versioning before activation.
+- Sarvam adapter for voice agent deployments, campaigns, language configuration, call results, transcripts/summaries where available and supported webhook/event ingestion. Keep model/API keys server-side.
+- Outbound: manual click-to-call for a selected lead, approved batch campaigns, schedules, retry caps, concurrency/rate limits, deduplication, idempotency and a kill switch.
+- Inbound: map phone number to tenant and agent; greet transparently, detect intent, answer from approved facts, create/update lead, capture structured qualification, and transfer/escalate to human when supported.
+- Website call request: implement callback request as portable MVP; only implement in-browser WebRTC/SIP calling when an actual provider and SDK support it.
+- Human escalation: transfer live call when supported; otherwise collect callback request, notify admin, create task, and clearly inform caller. Admin can configure multiple destinations and business hours.
+- Call outcome logging: provider call ID, direction, tenant, lead, timestamps, duration, status, disposition, summary, structured fields, transcript/recording references, cost and next action.
+- Follow-up workflow: assign owner, due date, priority, reminder, notes and status. Notify through email/in-app and optional approved messaging.
+- Official WhatsApp Business Platform and Instagram Messaging API integration. Use Meta or an approved BSP; implement OAuth/token handling, webhook verification, template/message policy, human handover and opt-out. Do not automate consumer apps through unofficial scraping.
+- Industry templates: hotel/hospitality, hospital/clinic administration (non-clinical), restaurant/catering, and generic B2B. Keep tenant-specific facts separate.
+- SaaS usage metering and plans: agent minutes, telephony minutes/pulses, number rentals, message usage, storage, limits, warnings, budget caps and invoice exports.
+Recommended Starting Stack
+Use a modular monolith initially: Next.js + TypeScript frontend; FastAPI/Python backend (or justify an alternative); PostgreSQL; pgvector and full-text search; SQS or Redis-backed job queue; S3-compatible object storage; KMS/Secrets Manager; Docker; CI/CD; OpenTelemetry-compatible logs/metrics/traces. Keep all external integrations behind adapters. Use migrations and typed request/response schemas.
+Security And Compliance
+- Add organization_id to all tenant-owned entities and enforce tenant scope in every query, worker, webhook, export and storage access. Add PostgreSQL RLS as defence in depth.
+- Store secrets encrypted, redact logs, validate webhook signatures, rate-limit public endpoints, protect against SSRF and injection, and maintain immutable audit events for privileged actions.
+- Treat phone numbers from imported lists as not automatically consented. Build a consent ledger and suppression list. Gate promotional calls/messages according to applicable Indian telecom rules and provider requirements.
+- Provide tenant-configurable quiet hours, frequency caps, retry caps, opt-out handling and campaign pause/kill switch.
+- Research and document applicable TRAI/TCCCPR/DLT/voice-DLT, provider KYC, privacy, recording notice and data-protection requirements; do not claim legal compliance without review by qualified counsel and the chosen telecom provider.
+- For hospitals, do not provide diagnosis, treatment recommendations or emergency triage. Minimize sensitive data and route clinical matters to authorized staff.
+Data Model
+Design migrations for organizations, memberships, roles, subscriptions, usage_events, provider_connections, phone_numbers, channel_connections, business_profiles, allowed_domains, crawled_pages, knowledge_documents, knowledge_chunks, agent_templates, agent_versions, scripts, campaigns, campaign_recipients, leads, lead_sources, consent_events, suppression_entries, calls, call_events, transcripts, call_summaries, conversations, messages, tasks, escalation_rules, audit_logs, webhook_events and integration_syncs.
+Development Process
+1. Inspect the repository and report its current structure before making changes.
+2. Write architecture.md, threat-model.md, provider-capability-matrix.md, API contract, schema diagram and phased backlog.
+3. Build a vertical slice first: tenant login → create lead → consent gate → click-to-call in sandbox/test setup → receive webhook → save outcome → create next action.
+4. Use mock adapters and simulated webhooks for tests; never require production credentials to run the test suite.
+5. Implement one real provider only after documenting exact credentials, required KYC, number provisioning, inbound/outbound setup, transfer capability and cost.
+6. Build in small milestones, run tests and type checks after each, and summarize changed files, commands, test results and remaining blockers.
+7. Do not mark a feature complete unless its acceptance criteria and tests pass. Never fabricate successful external calls.
+Acceptance Tests
+- Cross-tenant access attempts fail at API and database layers.
+- Calls cannot be queued without required consent/policy approval; suppressed leads are blocked.
+- Duplicate provider webhooks do not duplicate calls, leads, messages or tasks.
+- Inbound number resolves to the correct tenant.
+- Human transfer is executed only when adapter capability confirms support; otherwise fallback task/notification works.
+- Website crawler blocks localhost/private IPs, off-domain navigation and unsafe redirects.
+- Agent responses are grounded in approved facts and identify unknowns instead of inventing pricing, availability, clinical claims or policies.
+- Opt-out suppresses future promotional contact across channels.
+- Usage and cost are attributed to the correct tenant.
+- Secrets never appear in frontend responses, logs or error messages.
+- End-to-end tests cover lead intake, call lifecycle, follow-up and tenant isolation.
+Deliverables
+Working application, seed/demo tenants, migration files, .env.example with placeholders only, Docker Compose for local development, OpenAPI docs, tests, architecture/provider/compliance docs, setup guide, deployment guide, runbook, and a clear list of external approvals and provider dependencies still required.
+11. Primary research sources
+Sarvam Voice Agents — Phone Numbers and supported providers: https://docs.sarvam.ai/voice-agents/deploy/telephony
+Sarvam — Exotel integration guide: https://docs.sarvam.ai/api/integration/build-voice-agent-with-exotel
+Sarvam — Vobiz integration guide: https://docs.sarvam.ai/voice-agents/deploy/telephony/vobiz
+Sarvam — Rent numbers from Sarvam: https://docs.sarvam.ai/voice-agents/deploy/telephony/rent-from-sarvam
+Sarvam — Voice Agents pricing: https://docs.sarvam.ai/voice-agents/pricing
+Sarvam — Call transfer and supported telephony: https://docs.sarvam.ai/voice-agents/build/tools/call-transfer
+Tata Tele Smartflo — API introduction: https://docs.smartflo.tatatelebusiness.com/reference/introduction-to-apis-1
+TRAI — Advice to senders on commercial communications: https://www.trai.gov.in/advice-to-senders
+TRAI — Manage your consent: https://www.trai.gov.in/manage-your-consent
+TRAI — Unsolicited Commercial Communication: https://trai.gov.in/telecom/consumer-initiatives/unsolicited-commercial-communication
+Research caveat: this document distinguishes published vendor documentation from procurement assumptions. Provider pricing, phone-number series, KYC, service availability, regional restrictions, API permissions and legal obligations can change. Obtain current written confirmation from Sarvam, the selected telephony provider, Meta/BSP and Indian telecom/privacy counsel.
