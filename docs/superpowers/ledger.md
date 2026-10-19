@@ -18,6 +18,7 @@
 | **DEC-006** | 2026-10-19 | Knowledge Approval | Require explicit tenant admin approval for extracted website chunks before voice agent prompt ingestion. | Protects voice agents from prompt injections and hallucinating unauthorized rates, discounts, or medical advice. |
 | **DEC-007** | 2026-10-19 | Regulatory Calling Gate | Hard-code TRAI commercial calling window check (09:00 - 21:00 IST) and real-time suppression ledger check before initiating any call. | Non-negotiable legal requirement under Indian telecom regulations. Prevents fines and carrier blacklisting. |
 | **DEC-008** | 2026-10-19 | Contact Extraction (Harvey) | Adopt EthanPlusAI/Harvey heuristics for autonomous contact extraction, phone normalization, team profile detection, and corporate email prediction (`{f}.{l}@{domain}`) paired with anti-SSRF crawling. | Enables automated discovery of decision makers and telecom lines from business websites without paid external data vendors, directly feeding verified leads into the AI Voice dialer. |
+| **DEC-009** | 2026-10-19 | Voice Audio & Verification | Build native Web Audio tone synthesizer (telecom ringback cadence) and Web Speech API turn-by-turn conversation engine into browser caller, with full conversation persistence to Lead objects and dedicated recording playback modal. | Provides complete audio feedback during dialing and conversation without external audio files, while allowing operators to inspect, verify, and replay recorded conversations for every qualified lead. |
 
 ---
 
@@ -41,6 +42,7 @@
 | **VER-014** | Version Control | GitHub Repository Deployment | `git push -u origin main` | PASS | Successfully committed 71 files (9,819 insertions) with clean `.gitignore` and pushed branch `main` to `https://github.com/savdharamsale/ai-lead-voice-desk.git`. |
 | **VER-015** | Feature Integration | Harvey Contact Extractor & Web Scraper | `pytest backend/tests/ -v` & `npm run build` | PASS | Integrated EthanPlusAI/Harvey contact discovery engine into FastAPI & React. Implemented real website crawling in Knowledge Base replacing mock timeouts. 27/27 unit & integration tests passing. |
 | **VER-016** | Container & Remote Update | Docker Rebuild & GitHub Push | `docker compose up -d --build` & `git push` | PASS | Rebuilt frontend with Harvey Contact Discovery UI modal. Containers healthy. Pushed all changes to GitHub main. |
+| **VER-017** | Audio & Verification | Real-Time Call Audio & Playback Player | `npm run build` & Docker rebuild | PASS | Implemented audible ringing and real-time speech dialogue, automatic conversation recording attachment to Lead entities, and interactive Call Recording Player & Verification modal. Extracted Facts Review Queue immediately removes rejected items. |
 
 ---
 

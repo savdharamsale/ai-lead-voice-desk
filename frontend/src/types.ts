@@ -8,6 +8,18 @@ export interface Lead {
   source: string;
   is_suppressed: boolean;
   custom_fields: Record<string, any>;
+  last_call?: {
+    id: string;
+    call_id?: string;
+    duration_seconds: number;
+    cost_inr: number;
+    provider?: string;
+    status: string;
+    summary?: string;
+    recording_url?: string;
+    transcript: Array<{ role: string; text: string }>;
+    created_at: string;
+  };
   created_at: string;
 }
 

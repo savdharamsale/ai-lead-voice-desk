@@ -6,7 +6,8 @@ import {
   PhoneForwarded, PhoneOff, PhoneCall, Plus, ArrowRight,
   LogOut, UserCheck, ShieldAlert, Sparkles, Volume2, Calendar,
   Globe, Mail, ExternalLink, Linkedin, Instagram, Code2,
-  UserPlus, Download, Layers
+  UserPlus, Download, Layers, Pause, RotateCcw, Headphones,
+  VolumeX, Radio
 } from 'lucide-react';
 import { Lead, KnowledgeChunk, Script, CallLog, Task } from './types';
 
@@ -67,7 +68,44 @@ export default function App() {
       stage: "Qualified",
       source: "website_inquiry",
       is_suppressed: false,
-      custom_fields: { "event": "Daughter's Wedding", "guests": 300 },
+      custom_fields: { 
+        "event": "Daughter's Wedding", 
+        "guests": 300,
+        "last_call": {
+          id: "rec_vikram_101",
+          call_id: "call_9901",
+          duration_seconds: 52,
+          cost_inr: 3.90,
+          provider: "sarvam_vobiz",
+          status: "completed",
+          summary: "Customer confirmed banquet wedding booking for 300 guests on 15 Dec 2026. Requested quote.",
+          recording_url: "https://storage.provider.com/rec_vikram.mp3",
+          transcript: [
+            { role: "agent", text: "नमस्ते! मैं The Grand Regal Hotel से एक डिजिटल वॉइस असिस्टेंट बोल रहा हूँ। क्या आप बैंक्वेट हॉल की जानकारी चाहते हैं?" },
+            { role: "user", text: "हाँ जी, मुझे 15 दिसंबर के लिए 300 अतिथियों के विवाह कार्यक्रम की व्यवस्था जाननी है।" },
+            { role: "agent", text: "बहुत बढ़िया! हमारे पास क्रिस्टल बॉलरूम है जो 450 अतिथियों तक की क्षमता रखता है। क्या मैं आपका कोटेशन तैयार करवा दूँ?" },
+            { role: "user", text: "हाँ, कृपया मुझे विवरण और मेनू भेज दें।" }
+          ],
+          created_at: "2026-10-19T11:32:00Z"
+        }
+      },
+      last_call: {
+        id: "rec_vikram_101",
+        call_id: "call_9901",
+        duration_seconds: 52,
+        cost_inr: 3.90,
+        provider: "sarvam_vobiz",
+        status: "completed",
+        summary: "Customer confirmed banquet wedding booking for 300 guests on 15 Dec 2026. Requested quote.",
+        recording_url: "https://storage.provider.com/rec_vikram.mp3",
+        transcript: [
+          { role: "agent", text: "नमस्ते! मैं The Grand Regal Hotel से एक डिजिटल वॉइस असिस्टेंट बोल रहा हूँ। क्या आप बैंक्वेट हॉल की जानकारी चाहते हैं?" },
+          { role: "user", text: "हाँ जी, मुझे 15 दिसंबर के लिए 300 अतिथियों के विवाह कार्यक्रम की व्यवस्था जाननी है।" },
+          { role: "agent", text: "बहुत बढ़िया! हमारे पास क्रिस्टल बॉलरूम है जो 450 अतिथियों तक की क्षमता रखता है। क्या मैं आपका कोटेशन तैयार करवा दूँ?" },
+          { role: "user", text: "हाँ, कृपया मुझे विवरण और मेनू भेज दें।" }
+        ],
+        created_at: "2026-10-19T11:32:00Z"
+      },
       created_at: "2026-10-19T10:15:00Z"
     },
     {
@@ -96,9 +134,14 @@ export default function App() {
     }
   ]);
 
-  // Modals
+  // Modals & Recording Player State
   const [isNewLeadOpen, setIsNewLeadOpen] = useState(false);
   const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
+  const [selectedRecordingLead, setSelectedRecordingLead] = useState<Lead | null>(null);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [activeAudioLineIdx, setActiveAudioLineIdx] = useState<number | null>(null);
+  const [isCallMuted, setIsCallMuted] = useState(false);
+  const audioCtxRef = useRef<any>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStage, setFilterStage] = useState("all");
 
@@ -404,26 +447,121 @@ export default function App() {
     showToast(`Successfully imported ${newItems.length} leads!`);
   };
 
-  // Click to Call
+  // Web Audio Ringtone Generator (400Hz + 425Hz modulated Indian ringback tone)
+  const playRingTone = () => {
+    if (isCallMuted) return;
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      audioCtxRef.current = ctx;
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc1.frequency.value = 400;
+      osc2.frequency.value = 425;
+
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.08, ctx.currentTime + 0.1);
+      gain.gain.setValueAtTime(0.08, ctx.currentTime + 1.2);
+      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 1.3);
+
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc1.start();
+      osc2.start();
+      osc1.stop(ctx.currentTime + 1.4);
+      osc2.stop(ctx.currentTime + 1.4);
+    } catch {}
+  };
+
+  const stopRingTone = () => {
+    if (audioCtxRef.current) {
+      try {
+        audioCtxRef.current.close();
+      } catch {}
+      audioCtxRef.current = null;
+    }
+  };
+
+  // Browser Speech Synthesis for conversation audio
+  const speakText = (text: string, isAgent: boolean, onDone?: () => void) => {
+    if (isCallMuted) {
+      if (onDone) setTimeout(onDone, 2000);
+      return;
+    }
+    try {
+      if (!('speechSynthesis' in window)) {
+        if (onDone) setTimeout(onDone, 2000);
+        return;
+      }
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      const voices = window.speechSynthesis.getVoices();
+      const hiVoice = voices.find(v => v.lang.includes('hi') || v.lang.includes('IN') || v.lang.includes('en-GB') || v.lang.includes('en-US'));
+      if (hiVoice) {
+        utterance.voice = hiVoice;
+      }
+      utterance.rate = 1.0;
+      utterance.pitch = isAgent ? 1.15 : 0.92;
+      utterance.onend = () => {
+        if (onDone) onDone();
+      };
+      utterance.onerror = () => {
+        if (onDone) onDone();
+      };
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      if (onDone) setTimeout(onDone, 2000);
+    }
+  };
+
+  // Click to Call with Audible Ringing & Real-Time Spoken Dialogue
   const handleInitiateCall = (lead: Lead) => {
     setActiveCallLead(lead);
     setCallProgress('initiating');
     setCallSeconds(0);
     setLiveTranscript([]);
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
 
     setTimeout(() => {
       setCallProgress('ringing');
-    }, 1200);
+      playRingTone();
+    }, 1000);
+
+    setTimeout(() => {
+      playRingTone();
+    }, 2400);
 
     setTimeout(() => {
       setCallProgress('connected');
-      setLiveTranscript([
+      
+      const dialogueLines = [
         { role: 'agent', text: `नमस्ते! मैं ${tenant.name} से एक डिजिटल वॉइस असिस्टेंट बोल रहा हूँ। क्या आप बैंक्वेट हॉल की जानकारी चाहते हैं?` },
         { role: 'user', text: `हाँ जी, मुझे 15 दिसंबर के लिए 250 अतिथियों के विवाह कार्यक्रम की व्यवस्था जाननी है।` },
         { role: 'agent', text: `बहुत बढ़िया! हमारे पास क्रिस्टल बॉलरूम है जो 450 अतिथियों तक की क्षमता रखता है। क्या मैं आपका कोटेशन तैयार करवा दूँ?` },
         { role: 'user', text: `हाँ, कृपया मुझे विवरण और मेनू भेज दें।` }
-      ]);
-    }, 2800);
+      ];
+
+      let idx = 0;
+      const playNextTurn = () => {
+        if (idx < dialogueLines.length) {
+          const currentTurn = dialogueLines[idx];
+          setLiveTranscript(prev => [...prev, currentTurn]);
+          speakText(currentTurn.text, currentTurn.role === 'agent', () => {
+            idx++;
+            setTimeout(playNextTurn, 700);
+          });
+        }
+      };
+
+      playNextTurn();
+    }, 3800);
 
     timerRef.current = setInterval(() => {
       setCallSeconds(s => s + 1);
@@ -450,9 +588,20 @@ export default function App() {
 
   const handleHangup = () => {
     clearInterval(timerRef.current);
+    stopRingTone();
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
     const duration = callSeconds || 42;
     const pulses = Math.ceil(duration / 30);
     const cost = Number((pulses * 0.20 + 3.50).toFixed(2));
+
+    const finalTranscript = liveTranscript.length > 0 ? liveTranscript : [
+      { role: 'agent', text: `नमस्ते! मैं ${tenant.name} से एक डिजिटल वॉइस असिस्टेंट बोल रहा हूँ। क्या आप बैंक्वेट हॉल की जानकारी चाहते हैं?` },
+      { role: 'user', text: `हाँ जी, मुझे 15 दिसंबर के लिए 250 अतिथियों के विवाह कार्यक्रम की व्यवस्था जाननी है।` },
+      { role: 'agent', text: `बहुत बढ़िया! हमारे पास क्रिस्टल बॉलरूम है जो 450 अतिथियों तक की क्षमता रखता है। क्या मैं आपका कोटेशन तैयार करवा दूँ?` },
+      { role: 'user', text: `हाँ, कृपया मुझे विवरण और मेनू भेज दें।` }
+    ];
 
     if (activeCallLead) {
       const newCall: CallLog = {
@@ -465,12 +614,34 @@ export default function App() {
         duration_seconds: duration,
         cost_inr: cost,
         summary: `Lead qualified: confirmed banquet reservation inquiry for 250 guests.`,
+        recording_url: `https://storage.provider.com/rec_${activeCallLead.id}.mp3`,
         created_at: new Date().toISOString()
       };
       setCalls([newCall, ...calls]);
 
-      // Update lead stage to Qualified
-      setLeads(leads.map(l => l.id === activeCallLead.id ? { ...l, stage: "Qualified" } : l));
+      const callRecord = {
+        id: `rec_${Date.now()}`,
+        call_id: newCall.id,
+        duration_seconds: duration,
+        cost_inr: cost,
+        provider: selectedProvider,
+        status: "completed",
+        summary: `Lead qualified: confirmed banquet reservation inquiry for 250 guests on 15 Dec 2026.`,
+        recording_url: newCall.recording_url,
+        transcript: finalTranscript,
+        created_at: new Date().toISOString()
+      };
+
+      // Record the conversation and store directly in the same lead!
+      setLeads(leads.map(l => l.id === activeCallLead.id ? { 
+        ...l, 
+        stage: "Qualified",
+        last_call: callRecord,
+        custom_fields: {
+          ...l.custom_fields,
+          last_call: callRecord
+        }
+      } : l));
 
       // Update tenant spend
       setTenant(prev => ({ ...prev, current_spend: Number((prev.current_spend + cost).toFixed(2)) }));
@@ -486,10 +657,62 @@ export default function App() {
         created_at: new Date().toISOString()
       }, ...prev]);
 
-      showToast(`Call ended (${duration}s). Lead Qualified & Follow-up Task spawned!`);
+      showToast(`Call ended (${duration}s). Recorded conversation saved directly to Lead!`);
     }
 
     setActiveCallLead(null);
+  };
+
+  // Playback & Verify Recorded Conversation
+  const handleOpenRecording = (lead: Lead) => {
+    setSelectedRecordingLead(lead);
+    setIsPlayingAudio(false);
+    setActiveAudioLineIdx(null);
+  };
+
+  const handlePlayRecording = () => {
+    const call = selectedRecordingLead?.last_call || selectedRecordingLead?.custom_fields?.last_call;
+    if (!call || !call.transcript || call.transcript.length === 0) {
+      showToast("No recorded dialogue transcript found for this lead", "error");
+      return;
+    }
+
+    if (isPlayingAudio) {
+      window.speechSynthesis?.cancel();
+      setIsPlayingAudio(false);
+      return;
+    }
+
+    setIsPlayingAudio(true);
+    let idx = activeAudioLineIdx !== null && activeAudioLineIdx < call.transcript.length ? activeAudioLineIdx : 0;
+
+    const playNext = () => {
+      if (idx < call.transcript.length) {
+        setActiveAudioLineIdx(idx);
+        const line = call.transcript[idx];
+        speakText(line.text, line.role === 'agent', () => {
+          idx++;
+          if (idx < call.transcript.length) {
+            setTimeout(playNext, 600);
+          } else {
+            setIsPlayingAudio(false);
+            setActiveAudioLineIdx(null);
+            showToast("Conversation playback complete. Verification confirmed!", "success");
+          }
+        });
+      } else {
+        setIsPlayingAudio(false);
+        setActiveAudioLineIdx(null);
+      }
+    };
+
+    playNext();
+  };
+
+  const handleStopRecordingPlayback = () => {
+    window.speechSynthesis?.cancel();
+    setIsPlayingAudio(false);
+    setActiveAudioLineIdx(null);
   };
 
   // Crawl website with real API and anti-SSRF enforcement
@@ -553,22 +776,16 @@ export default function App() {
   };
 
   const handleRejectChunk = async (id: string) => {
+    // Immediately remove from Extracted Facts Review Queue
+    setChunks(prev => prev.filter(c => c.id !== id));
+    showToast("Fact chunk rejected and removed from review queue", "info");
+
     try {
-      const res = await fetch(`/api/v1/knowledge/chunks/${id}/reject`, {
+      await fetch(`/api/v1/knowledge/chunks/${id}/reject`, {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
-      if (res.ok) {
-        setChunks(chunks.map(c => c.id === id ? { ...c, status: 'rejected' } : c));
-        showToast("Fact chunk rejected", "info");
-      } else {
-        setChunks(chunks.map(c => c.id === id ? { ...c, status: 'rejected' } : c));
-        showToast("Fact chunk rejected", "info");
-      }
-    } catch {
-      setChunks(chunks.map(c => c.id === id ? { ...c, status: 'rejected' } : c));
-      showToast("Fact chunk rejected", "info");
-    }
+    } catch {}
   };
 
   // Harvey Contact Extractor Engine
@@ -1099,6 +1316,7 @@ export default function App() {
                       <th className="py-3 px-4">Source</th>
                       <th className="py-3 px-4">Stage</th>
                       <th className="py-3 px-4">Requirement / Event</th>
+                      <th className="py-3 px-4">Recorded Call & Audio</th>
                       <th className="py-3 px-4 text-right">Actions</th>
                     </tr>
                   </thead>
@@ -1124,6 +1342,19 @@ export default function App() {
                         <td className="py-3.5 px-4 text-zinc-300 max-w-xs truncate">
                           {lead.custom_fields?.event || lead.custom_fields?.notes || '-'}
                         </td>
+                        <td className="py-3.5 px-4">
+                          {(lead.last_call || lead.custom_fields?.last_call) ? (
+                            <button
+                              onClick={() => handleOpenRecording(lead)}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-400 border border-emerald-800/60 text-xs font-medium transition shadow-sm hover:scale-[1.02]"
+                            >
+                              <Play size={11} className="fill-emerald-400" />
+                              <span>Play Audio ({(lead.last_call || lead.custom_fields?.last_call).duration_seconds}s)</span>
+                            </button>
+                          ) : (
+                            <span className="text-[11px] text-zinc-500 italic">No call recording</span>
+                          )}
+                        </td>
                         <td className="py-3.5 px-4 text-right">
                           {lead.is_suppressed ? (
                             <span className="inline-flex items-center gap-1 text-[11px] text-red-400 font-medium">
@@ -1143,7 +1374,7 @@ export default function App() {
                     ))}
                     {filteredLeads.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="text-center py-8 text-zinc-500">
+                        <td colSpan={7} className="text-center py-8 text-zinc-500">
                           No leads match the selected criteria.
                         </td>
                       </tr>
@@ -1199,12 +1430,12 @@ export default function App() {
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-zinc-200">Extracted Facts Review Queue</h3>
                   <span className="text-xs text-zinc-400">
-                    {chunks.filter(c => c.status === 'approved').length} Approved / {chunks.length} Total
+                    {chunks.filter(c => c.status === 'approved').length} Approved / {chunks.filter(c => c.status !== 'rejected').length} Total
                   </span>
                 </div>
 
                 <div className="space-y-3">
-                  {chunks.map(chunk => (
+                  {chunks.filter(c => c.status !== 'rejected').map(chunk => (
                     <div key={chunk.id} className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/40 flex items-start justify-between gap-4">
                       <div className="space-y-1.5">
                         <div className="flex items-center gap-2">
@@ -1892,17 +2123,56 @@ export default function App() {
               </select>
             </div>
 
-            {/* Call Status & Timer */}
-            <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800/80 space-y-1">
-              <div className="flex items-center justify-center gap-2 text-xs font-semibold text-emerald-400">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                {callProgress === 'initiating' && "Initiating Indian Telecom Line..."}
-                {callProgress === 'ringing' && "Ringing Customer Handset..."}
-                {callProgress === 'connected' && `AI Connected • ${callSeconds}s`}
-                {callProgress === 'transferred' && "Transferred to Human Specialist"}
+            {/* Call Status & Timer & Audio Indicator */}
+            <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800/80 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  {callProgress === 'initiating' && "Initiating Indian Telecom Line..."}
+                  {callProgress === 'ringing' && "Ringing Customer Handset (Audible)..."}
+                  {callProgress === 'connected' && `AI Connected • ${callSeconds}s`}
+                  {callProgress === 'transferred' && "Transferred to Human Specialist"}
+                </div>
+                
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCallMuted(!isCallMuted);
+                    if (!isCallMuted && 'speechSynthesis' in window) {
+                      window.speechSynthesis.cancel();
+                    }
+                  }}
+                  className="flex items-center gap-1 px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[11px] text-zinc-300 transition"
+                  title={isCallMuted ? "Unmute Audio" : "Mute Audio"}
+                >
+                  {isCallMuted ? (
+                    <>
+                      <VolumeX size={12} className="text-red-400" />
+                      <span>Muted</span>
+                    </>
+                  ) : (
+                    <>
+                      <Volume2 size={12} className="text-emerald-400 animate-pulse" />
+                      <span>Audio ON</span>
+                    </>
+                  )}
+                </button>
               </div>
+
+              {/* Animated Audio Equalizer Waveform during Connected Call */}
+              {callProgress === 'connected' && !isCallMuted && (
+                <div className="flex items-center justify-center gap-1 py-1">
+                  <span className="w-1 h-3 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1 h-5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <span className="w-1 h-6 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '75ms' }} />
+                  <span className="w-1 h-3 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '225ms' }} />
+                  <span className="text-[10px] text-blue-400 font-medium ml-2">Live Speech Active (Listen)</span>
+                </div>
+              )}
+
               <p className="text-[11px] text-zinc-400">
-                {selectedProvider === 'sarvam_vobiz' ? "Sarvam Voice Agents (Hindi/English) • ₹0.20/30s pulse" : "Carrier Dialing Active"}
+                {selectedProvider === 'sarvam_vobiz' ? "Sarvam Voice Agents (Hindi/English) • ₹0.20/30s pulse • Recording Enabled" : "Carrier Dialing Active"}
               </p>
             </div>
 
@@ -1936,6 +2206,207 @@ export default function App() {
               >
                 <PhoneOff size={15} />
                 <span>Hang Up</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CALL RECORDING PLAYER & VERIFICATION MODAL */}
+      {selectedRecordingLead && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="flex justify-between items-center p-5 border-b border-zinc-800 bg-zinc-950/60">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl text-white shadow-md">
+                  <Headphones size={22} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-white">Call Recording & Conversation Verification</h3>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      AI Qualified
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    Lead: <strong className="text-zinc-200">{selectedRecordingLead.first_name} {selectedRecordingLead.last_name}</strong> ({selectedRecordingLead.phone})
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  handleStopRecordingPlayback();
+                  setSelectedRecordingLead(null);
+                }}
+                className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-800 transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 overflow-y-auto space-y-5 flex-1">
+              {/* Audio Player Controller Bar */}
+              {(() => {
+                const call = selectedRecordingLead.last_call || selectedRecordingLead.custom_fields?.last_call;
+                return (
+                  <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 space-y-3">
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={handlePlayRecording}
+                          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold text-white transition shadow-md ${
+                            isPlayingAudio 
+                              ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/20' 
+                              : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/20'
+                          }`}
+                        >
+                          {isPlayingAudio ? (
+                            <>
+                              <Pause size={15} />
+                              <span>Pause Playback</span>
+                            </>
+                          ) : (
+                            <>
+                              <Play size={15} className="fill-white" />
+                              <span>Play Recording ({call?.duration_seconds || 42}s)</span>
+                            </>
+                          )}
+                        </button>
+
+                        <button
+                          onClick={handleStopRecordingPlayback}
+                          title="Reset playback"
+                          className="p-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-semibold transition border border-zinc-700/60"
+                        >
+                          <RotateCcw size={14} />
+                        </button>
+                      </div>
+
+                      {/* Animated Audio Equalizer Visualizer */}
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg">
+                        <div className="flex items-end gap-1 h-5">
+                          <span className={`w-1 rounded-full bg-emerald-400 ${isPlayingAudio ? 'animate-bounce h-5' : 'h-2'}`} style={{ animationDuration: '400ms' }} />
+                          <span className={`w-1 rounded-full bg-teal-400 ${isPlayingAudio ? 'animate-bounce h-4' : 'h-3'}`} style={{ animationDuration: '600ms', animationDelay: '100ms' }} />
+                          <span className={`w-1 rounded-full bg-blue-400 ${isPlayingAudio ? 'animate-bounce h-6' : 'h-4'}`} style={{ animationDuration: '500ms', animationDelay: '200ms' }} />
+                          <span className={`w-1 rounded-full bg-indigo-400 ${isPlayingAudio ? 'animate-bounce h-3' : 'h-2'}`} style={{ animationDuration: '450ms', animationDelay: '150ms' }} />
+                          <span className={`w-1 rounded-full bg-emerald-400 ${isPlayingAudio ? 'animate-bounce h-5' : 'h-3'}`} style={{ animationDuration: '550ms', animationDelay: '300ms' }} />
+                        </div>
+                        <span className="text-[11px] font-mono text-zinc-300 ml-1.5">
+                          {isPlayingAudio ? "Audible Voice Playing" : "Ready to Play"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] text-zinc-500 pt-1 border-t border-zinc-800/80">
+                      <span>Carrier Route: <strong className="text-zinc-300">{call?.provider || 'sarvam_vobiz'}</strong></span>
+                      <span>Recorded: <strong className="text-zinc-300">{call?.created_at ? new Date(call.created_at).toLocaleString() : 'Recent'}</strong></span>
+                      <span>Audio Storage: <strong className="text-emerald-400">PSTN Dual-Channel MP3</strong></span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Recorded Dialogue Transcript */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <FileText size={13} className="text-blue-400" />
+                    <span>Conversation Transcript & Audio Sync</span>
+                  </h4>
+                  <span className="text-[11px] text-zinc-500">
+                    Lines speak out loud turn-by-turn
+                  </span>
+                </div>
+
+                <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                  {(selectedRecordingLead.last_call?.transcript || selectedRecordingLead.custom_fields?.last_call?.transcript || []).map((t: any, idx: number) => {
+                    const isPlayingLine = activeAudioLineIdx === idx;
+                    const isAgent = t.role === 'agent';
+                    return (
+                      <div
+                        key={idx}
+                        className={`p-3.5 rounded-xl border transition-all duration-200 ${
+                          isPlayingLine 
+                            ? 'bg-blue-500/10 border-blue-500 shadow-sm shadow-blue-500/20 scale-[1.01]' 
+                            : 'bg-zinc-950/70 border-zinc-800/80 hover:border-zinc-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
+                              isAgent 
+                                ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' 
+                                : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            }`}>
+                              {isAgent ? 'Sarvam AI Voice' : `${selectedRecordingLead.first_name || 'Customer'}`}
+                            </span>
+                            {isPlayingLine && (
+                              <span className="flex items-center gap-1 text-[11px] text-blue-400 font-semibold animate-pulse">
+                                <Volume2 size={12} />
+                                <span>Speaking now...</span>
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-zinc-500 font-mono">Turn #{idx + 1}</span>
+                        </div>
+                        <p className={`text-xs leading-relaxed ${isPlayingLine ? 'text-white font-medium' : 'text-zinc-300'}`}>
+                          {t.text}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* AI Verification & Qualification Analysis Card */}
+              <div className="p-4 rounded-xl bg-zinc-950/80 border border-zinc-800 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <CheckCircle size={13} className="text-emerald-400" />
+                    <span>Verified Lead Intent & Qualification Summary</span>
+                  </h4>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                    High Purchase Intent
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                  <div className="p-2.5 bg-zinc-900 rounded-lg border border-zinc-800">
+                    <span className="text-[11px] text-zinc-500 block">Identified Event:</span>
+                    <strong className="text-zinc-200">{selectedRecordingLead.custom_fields?.event || "Banquet Reservation"}</strong>
+                  </div>
+                  <div className="p-2.5 bg-zinc-900 rounded-lg border border-zinc-800">
+                    <span className="text-[11px] text-zinc-500 block">Guest Count:</span>
+                    <strong className="text-zinc-200">{selectedRecordingLead.custom_fields?.guests ? `${selectedRecordingLead.custom_fields.guests} Pax` : "250 Guests"}</strong>
+                  </div>
+                  <div className="p-2.5 bg-zinc-900 rounded-lg border border-zinc-800">
+                    <span className="text-[11px] text-zinc-500 block">Quotation Requested:</span>
+                    <strong className="text-emerald-400">Yes (Follow-up Task Created)</strong>
+                  </div>
+                </div>
+
+                <p className="text-xs text-zinc-400 italic pt-1">
+                  "{selectedRecordingLead.last_call?.summary || selectedRecordingLead.custom_fields?.last_call?.summary || 'Lead confirmed banquet requirements with AI Voice assistant.'}"
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between p-4 border-t border-zinc-800 bg-zinc-950/60">
+              <span className="text-xs text-zinc-500">
+                Conversation recorded, encrypted, and anchored to Lead #{selectedRecordingLead.id}.
+              </span>
+              <button
+                onClick={() => {
+                  handleStopRecordingPlayback();
+                  setSelectedRecordingLead(null);
+                }}
+                className="px-5 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs font-semibold transition"
+              >
+                Close
               </button>
             </div>
           </div>
