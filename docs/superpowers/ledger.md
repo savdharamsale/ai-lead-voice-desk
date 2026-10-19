@@ -36,7 +36,8 @@
 | **VER-010** | Milestone 8 | Frontend Web Build | `npm run build` | PASS | Vite + React 18 production build compiled in 1.84s with 0 errors. |
 | **VER-011** | UX/UI Overhaul | shadcn/ui Redesign & Modals | Interactive UI validation & `npm run build` | PASS | Implemented shadcn/ui design system with zinc dark tokens, real authentication, functional "+ New Lead" modal, CSV bulk import, and live call dialog with human transfer. |
 | **VER-012** | Live Runtime | Full-Stack Runtime Verification | Live curl to FastAPI (8000) & Vite (3000) | PASS | Verified live JWT login, lead creation via API, healthz check, and Vite dev server running on port 3000. |
-| **VER-013** | Docker Packaging | Docker Compose Multi-Container Stack | `docker compose up -d --build` & container verification | PASS | Built `ai-lead-voice-desk-backend:latest` and `ai-lead-voice-desk-frontend:latest`. Containers `desk_backend`, `desk_frontend` (port 3001), `desk_postgres`, and `desk_redis` running healthy. Verified Nginx reverse proxy, PostgreSQL seed data, and JWT auth through port 3001. |
+| **VER-013** | Docker Packaging | Docker Compose Multi-Container Stack | `docker compose up -d --build` & container verification | PASS | Built `ai-lead-voice-desk-backend:latest` and `ai-lead-voice-desk-frontend:latest`. Containers `desk_backend`, `desk_frontend` (ports 3000 & 3001), `desk_postgres`, and `desk_redis` running healthy. Verified Nginx reverse proxy, PostgreSQL seed data, and JWT auth through port 3000. |
+| **VER-014** | Version Control | GitHub Repository Deployment | `git push -u origin main` | PASS | Successfully committed 71 files (9,819 insertions) with clean `.gitignore` and pushed branch `main` to `https://github.com/savdharamsale/ai-lead-voice-desk.git`. |
 
 ---
 
