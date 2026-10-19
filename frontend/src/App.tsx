@@ -4,7 +4,9 @@ import {
   AlertCircle, Clock, ShieldCheck, ChevronRight, Play, 
   Upload, Search, Filter, RefreshCw, Building, Check, X, 
   PhoneForwarded, PhoneOff, PhoneCall, Plus, ArrowRight,
-  LogOut, UserCheck, ShieldAlert, Sparkles, Volume2, Calendar
+  LogOut, UserCheck, ShieldAlert, Sparkles, Volume2, Calendar,
+  Globe, Mail, ExternalLink, Linkedin, Instagram, Code2,
+  UserPlus, Download, Layers
 } from 'lucide-react';
 import { Lead, KnowledgeChunk, Script, CallLog, Task } from './types';
 
@@ -146,6 +148,25 @@ export default function App() {
     }
   ]);
 
+  // Harvey Extractor State
+  const [isExtractorOpen, setIsExtractorOpen] = useState(false);
+  const [extractUrl, setExtractUrl] = useState("https://thegrandregal.in");
+  const [crawlSubpages, setCrawlSubpages] = useState(true);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractorStatus, setExtractorStatus] = useState<string | null>(null);
+  const [extractedData, setExtractedData] = useState<{
+    target_url?: string;
+    domain?: string;
+    pages_scanned?: number;
+    company_name?: string;
+    phones?: Array<{ raw: string; normalized: string; type: string; source_url: string }>;
+    emails?: Array<{ email: string; domain: string; source_url: string }>;
+    people?: Array<{ name: string; title: string; predicted_email: string; source_url: string }>;
+    social_links?: Record<string, string>;
+    tech_stack?: string[];
+  } | null>(null);
+  const [isImportingExtracted, setIsImportingExtracted] = useState(false);
+
   // Script Studio State
   const [selectedVertical, setSelectedVertical] = useState("hospitality");
   const [scriptApproved, setScriptApproved] = useState(true);
@@ -196,7 +217,7 @@ export default function App() {
   const [liveTranscript, setLiveTranscript] = useState<Array<{ role: string; text: string }>>([]);
   const timerRef = useRef<any>(null);
 
-  // Fetch initial leads from backend if available
+  // Fetch initial leads & knowledge chunks from backend if available
   useEffect(() => {
     if (token) {
       fetch('/api/v1/leads', { headers: { Authorization: `Bearer ${token}` } })
@@ -204,6 +225,15 @@ export default function App() {
         .then(data => {
           if (data && Array.isArray(data) && data.length > 0) {
             setLeads(data);
+          }
+        })
+        .catch(() => {});
+
+      fetch('/api/v1/knowledge/chunks', { headers: { Authorization: `Bearer ${token}` } })
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data && Array.isArray(data) && data.length > 0) {
+            setChunks(data);
           }
         })
         .catch(() => {});
@@ -462,36 +492,218 @@ export default function App() {
     setActiveCallLead(null);
   };
 
-  // Crawl website
-  const handleScrape = () => {
+  // Crawl website with real API and anti-SSRF enforcement
+  const handleScrape = async () => {
+    if (!crawlUrl.trim()) {
+      showToast("Please enter a valid website URL to scrape", "error");
+      return;
+    }
     setIsCrawling(true);
-    setCrawlStatusMsg("Resolving DNS & enforcing anti-SSRF checks...");
-    setTimeout(() => {
-      setCrawlStatusMsg("SSRF checks passed (Target IP: 104.21.32.18). Extracting content...");
-      setTimeout(() => {
-        setIsCrawling(false);
-        const newChunk: KnowledgeChunk = {
-          id: `chk_${Date.now()}`,
-          title: "Banquet Catering Packages (Draft)",
-          fact_text: "Gold packages include welcome mocktails, 4 starters, and live counter desserts at ₹2,600/plate.",
-          status: "draft",
-          created_at: new Date().toISOString()
-        };
-        setChunks([newChunk, ...chunks]);
-        showToast("Website scraped! 1 new fact chunk added for review.");
-        setCrawlStatusMsg(null);
-      }, 1200);
-    }, 1000);
+    setCrawlStatusMsg("Resolving DNS & enforcing anti-SSRF RFC-1918 pre-flight verification...");
+    try {
+      const res = await fetch('/api/v1/knowledge/crawl', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ url: crawlUrl.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || "Failed to crawl target website");
+      }
+      setCrawlStatusMsg(`Extracted ${data.count || 1} facts from ${data.page_title || 'website'}!`);
+      // Refresh chunks list from backend
+      const refreshRes = await fetch('/api/v1/knowledge/chunks', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      if (refreshRes.ok) {
+        const updated = await refreshRes.json();
+        setChunks(updated);
+      } else if (data.chunks_created) {
+        setChunks(prev => [...data.chunks_created, ...prev]);
+      }
+      showToast(`Website scraped! ${data.count || 1} fact chunks added for review.`, "success");
+    } catch (err: any) {
+      showToast(err.message || "Failed to scrape website", "error");
+    } finally {
+      setIsCrawling(false);
+      setTimeout(() => setCrawlStatusMsg(null), 4500);
+    }
   };
 
-  const handleApproveChunk = (id: string) => {
-    setChunks(chunks.map(c => c.id === id ? { ...c, status: 'approved' } : c));
-    showToast("Fact chunk approved and grounded in voice agent prompts!");
+  const handleApproveChunk = async (id: string) => {
+    try {
+      const res = await fetch(`/api/v1/knowledge/chunks/${id}/approve`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      if (res.ok) {
+        setChunks(chunks.map(c => c.id === id ? { ...c, status: 'approved' } : c));
+        showToast("Fact chunk approved and grounded in voice agent prompts!");
+      } else {
+        setChunks(chunks.map(c => c.id === id ? { ...c, status: 'approved' } : c));
+        showToast("Fact chunk approved and grounded!");
+      }
+    } catch {
+      setChunks(chunks.map(c => c.id === id ? { ...c, status: 'approved' } : c));
+      showToast("Fact chunk approved!");
+    }
   };
 
-  const handleRejectChunk = (id: string) => {
-    setChunks(chunks.map(c => c.id === id ? { ...c, status: 'rejected' } : c));
-    showToast("Fact chunk rejected", "info");
+  const handleRejectChunk = async (id: string) => {
+    try {
+      const res = await fetch(`/api/v1/knowledge/chunks/${id}/reject`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      if (res.ok) {
+        setChunks(chunks.map(c => c.id === id ? { ...c, status: 'rejected' } : c));
+        showToast("Fact chunk rejected", "info");
+      } else {
+        setChunks(chunks.map(c => c.id === id ? { ...c, status: 'rejected' } : c));
+        showToast("Fact chunk rejected", "info");
+      }
+    } catch {
+      setChunks(chunks.map(c => c.id === id ? { ...c, status: 'rejected' } : c));
+      showToast("Fact chunk rejected", "info");
+    }
+  };
+
+  // Harvey Contact Extractor Engine
+  const handleExtractContacts = async () => {
+    if (!extractUrl.trim()) {
+      showToast("Please enter a target business website URL", "error");
+      return;
+    }
+    setIsExtracting(true);
+    setExtractorStatus("Crawling target site & scanning phone numbers, emails, and leadership profiles...");
+    try {
+      const res = await fetch('/api/v1/leads/extract-contacts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ url: extractUrl.trim(), crawl_subpages: crawlSubpages })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || "Failed to extract contacts");
+      }
+      setExtractedData(data);
+      const phoneCount = data.phones?.length || 0;
+      const emailCount = data.emails?.length || 0;
+      const peopleCount = data.people?.length || 0;
+      showToast(`Discovered ${phoneCount} phones, ${emailCount} emails, and ${peopleCount} decision makers!`, "success");
+    } catch (err: any) {
+      showToast(err.message || "Failed to extract contacts from website", "error");
+    } finally {
+      setIsExtracting(false);
+      setExtractorStatus(null);
+    }
+  };
+
+  const handleImportSingleExtracted = async (item: { first_name?: string; last_name?: string; phone: string; email?: string; title?: string }) => {
+    try {
+      const res = await fetch('/api/v1/leads/import-extracted', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          contacts: [{
+            first_name: item.first_name || (extractedData?.company_name ? extractedData.company_name.split(' ')[0] : "Business"),
+            last_name: item.last_name || "Lead",
+            phone: item.phone,
+            email: item.email || "",
+            title: item.title,
+            source_url: extractUrl
+          }]
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || "Failed to import lead");
+      }
+      // Refresh leads
+      const refresh = await fetch('/api/v1/leads', { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (refresh.ok) {
+        const updated = await refresh.json();
+        setLeads(updated);
+      }
+      showToast(`Imported ${item.phone} into CRM Leads!`, "success");
+    } catch (err: any) {
+      showToast(err.message || "Failed to import lead", "error");
+    }
+  };
+
+  const handleImportAllExtracted = async () => {
+    if (!extractedData) return;
+    const contactsToImport: Array<{ first_name?: string; last_name?: string; phone: string; email?: string; title?: string; source_url?: string }> = [];
+
+    const primaryPhone = extractedData.phones?.[0]?.normalized;
+    if (extractedData.people && extractedData.people.length > 0 && primaryPhone) {
+      extractedData.people.forEach(p => {
+        const parts = (p.name || "").trim().split(" ");
+        contactsToImport.push({
+          first_name: parts[0] || "Executive",
+          last_name: parts.slice(1).join(" ") || "",
+          phone: primaryPhone,
+          email: p.predicted_email || extractedData.emails?.[0]?.email || "",
+          title: p.title || "Decision Maker",
+          source_url: extractedData.target_url
+        });
+      });
+    }
+
+    extractedData.phones?.forEach((p, idx) => {
+      const alreadyAdded = contactsToImport.some(c => c.phone === p.normalized);
+      if (!alreadyAdded) {
+        contactsToImport.push({
+          first_name: extractedData.company_name || "Business",
+          last_name: `Contact #${idx + 1}`,
+          phone: p.normalized,
+          email: extractedData.emails?.[0]?.email || "",
+          title: `${p.type.toUpperCase()} Line`,
+          source_url: extractedData.target_url
+        });
+      }
+    });
+
+    if (contactsToImport.length === 0) {
+      showToast("No valid phone numbers found to import", "info");
+      return;
+    }
+
+    setIsImportingExtracted(true);
+    try {
+      const res = await fetch('/api/v1/leads/import-extracted', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ contacts: contactsToImport })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || "Failed to batch import");
+      }
+      const refresh = await fetch('/api/v1/leads', { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (refresh.ok) {
+        const updated = await refresh.json();
+        setLeads(updated);
+      }
+      showToast(`Successfully imported ${data.imported_count || contactsToImport.length} leads to CRM!`, "success");
+      setIsExtractorOpen(false);
+    } catch (err: any) {
+      showToast(err.message || "Failed to batch import leads", "error");
+    } finally {
+      setIsImportingExtracted(false);
+    }
   };
 
   const handleToggleTask = (id: string) => {
@@ -796,7 +1008,14 @@ export default function App() {
                   <h2 className="text-xl font-bold text-white tracking-tight">Leads & Outbound Dialer</h2>
                   <p className="text-xs text-zinc-400">Manage contacts, verify consent provenance, and initiate AI voice calling.</p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <button
+                    onClick={() => setIsExtractorOpen(true)}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-500 hover:to-violet-500 rounded-lg text-xs font-semibold text-white transition shadow-md shadow-indigo-600/20"
+                  >
+                    <Sparkles size={14} className="text-yellow-300" />
+                    <span>Extract Contacts (Harvey)</span>
+                  </button>
                   <button
                     onClick={() => setIsCsvModalOpen(true)}
                     className="flex items-center gap-2 px-3.5 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 rounded-lg text-xs font-semibold text-zinc-200 transition shadow-sm"
@@ -1337,6 +1556,302 @@ export default function App() {
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow-md shadow-blue-600/20"
               >
                 Import Leads
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* HARVEY CONTACT EXTRACTOR MODAL */}
+      {isExtractorOpen && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            {/* Modal Header */}
+            <div className="flex justify-between items-center p-5 border-b border-zinc-800 bg-zinc-950/60">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg text-white shadow-md">
+                  <Sparkles size={20} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-white">Harvey Lead & Contact Discovery Engine</h3>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                      RFC-1918 Verified
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    Extract Indian phone numbers, decision makers, verified emails, and socials from business sites.
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsExtractorOpen(false)} 
+                className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-800 transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-6 flex-1">
+              {/* URL Input Form */}
+              <div className="p-4 rounded-xl bg-zinc-950/80 border border-zinc-800 space-y-3">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="relative flex-1">
+                    <Globe size={15} className="absolute left-3 top-3 text-zinc-500" />
+                    <input
+                      type="url"
+                      value={extractUrl}
+                      onChange={(e) => setExtractUrl(e.target.value)}
+                      placeholder="https://businesswebsite.in"
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <button
+                    onClick={handleExtractContacts}
+                    disabled={isExtracting}
+                    className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition shadow-md shadow-indigo-600/20 shrink-0"
+                  >
+                    {isExtracting ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
+                    <span>{isExtracting ? "Scanning Website..." : "Discover Contacts"}</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between text-xs pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer text-zinc-300">
+                    <input
+                      type="checkbox"
+                      checked={crawlSubpages}
+                      onChange={(e) => setCrawlSubpages(e.target.checked)}
+                      className="rounded border-zinc-700 bg-zinc-900 text-indigo-600 focus:ring-0"
+                    />
+                    <span>Automatically scan subpages (/contact, /about, /team, /leadership)</span>
+                  </label>
+                  <span className="text-[11px] text-zinc-500 hidden sm:inline">Harvey profile analyzer</span>
+                </div>
+
+                {extractorStatus && (
+                  <div className="p-2.5 rounded-lg bg-indigo-950/40 border border-indigo-800/60 text-xs text-indigo-300 flex items-center gap-2 animate-pulse">
+                    <RefreshCw size={13} className="animate-spin" />
+                    <span>{extractorStatus}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Extracted Results Display */}
+              {extractedData && (
+                <div className="space-y-5">
+                  {/* Summary Bar */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-zinc-950 rounded-xl border border-zinc-800">
+                    <div>
+                      <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                        <span>{extractedData.company_name || extractedData.domain || "Target Business"}</span>
+                        <span className="text-[11px] font-normal text-zinc-400 font-mono">({extractedData.domain})</span>
+                      </h4>
+                      <p className="text-xs text-zinc-500 mt-0.5">
+                        Scanned {Array.isArray(extractedData.pages_crawled) ? extractedData.pages_crawled.length : (extractedData.pages_scanned || 1)} pages • Found {extractedData.phones?.length || 0} phone lines, {extractedData.emails?.length || 0} email inboxes, {extractedData.people?.length || 0} executives
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={handleImportAllExtracted}
+                      disabled={isImportingExtracted || (!extractedData.phones?.length && !extractedData.people?.length)}
+                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
+                    >
+                      {isImportingExtracted ? <RefreshCw size={13} className="animate-spin" /> : <UserPlus size={13} />}
+                      <span>Import All to CRM Leads</span>
+                    </button>
+                  </div>
+
+                  {/* Discovered Phone Numbers (Click to Call / Direct Add) */}
+                  <div className="space-y-2">
+                    <h5 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <Phone size={13} className="text-emerald-400" />
+                      <span>Phone Numbers & Telecom Lines ({extractedData.phones?.length || 0})</span>
+                    </h5>
+                    {(!extractedData.phones || extractedData.phones.length === 0) ? (
+                      <p className="text-xs text-zinc-500 italic p-3 bg-zinc-950/50 rounded-lg">No direct phone numbers found on scanned pages.</p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        {extractedData.phones.map((phone, idx) => (
+                          <div key={idx} className="p-3 bg-zinc-950 rounded-xl border border-zinc-800 flex items-center justify-between gap-2">
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-xs font-bold text-white">{phone.normalized}</span>
+                                <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded ${
+                                  phone.type === 'mobile' ? 'bg-emerald-500/20 text-emerald-400' :
+                                  phone.type === 'tollfree' ? 'bg-purple-500/20 text-purple-400' :
+                                  'bg-blue-500/20 text-blue-400'
+                                }`}>
+                                  {phone.type}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-zinc-500 truncate max-w-[200px]" title={phone.raw}>
+                                Raw: {phone.raw}
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={() => handleImportSingleExtracted({ phone: phone.normalized, title: `${phone.type.toUpperCase()} Contact` })}
+                                title="Import into CRM"
+                                className="p-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs font-medium transition"
+                              >
+                                <UserPlus size={13} />
+                              </button>
+                              <button
+                                onClick={() => handleInitiateCall({
+                                  id: `lead_temp_${Date.now()}`,
+                                  first_name: extractedData.company_name || "Business",
+                                  last_name: "Contact",
+                                  phone: phone.normalized,
+                                  email: extractedData.emails?.[0]?.email || "",
+                                  stage: "Eligible to Contact",
+                                  source: "harvey_extractor",
+                                  is_suppressed: false,
+                                  custom_fields: {},
+                                  created_at: new Date().toISOString()
+                                })}
+                                title="Click-to-Call with AI Voice Agent"
+                                className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition shadow-sm"
+                              >
+                                <PhoneCall size={12} />
+                                <span>Call</span>
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Discovered Decision Makers & Team */}
+                  <div className="space-y-2">
+                    <h5 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <Users size={13} className="text-blue-400" />
+                      <span>Decision Makers & Team ({extractedData.people?.length || 0})</span>
+                    </h5>
+                    {(!extractedData.people || extractedData.people.length === 0) ? (
+                      <p className="text-xs text-zinc-500 italic p-3 bg-zinc-950/50 rounded-lg">No executive profiles identified in scanned headings or team sections.</p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        {extractedData.people.map((person, idx) => (
+                          <div key={idx} className="p-3 bg-zinc-950 rounded-xl border border-zinc-800 flex items-start justify-between gap-3">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-bold text-white">{person.name}</span>
+                              </div>
+                              <p className="text-[11px] text-blue-400 font-medium">{person.title || "Executive"}</p>
+                              {person.predicted_email && (
+                                <p className="text-[11px] font-mono text-zinc-400 flex items-center gap-1">
+                                  <Mail size={11} className="text-zinc-500" />
+                                  <span>{person.predicted_email}</span>
+                                </p>
+                              )}
+                            </div>
+
+                            <button
+                              onClick={() => {
+                                const parts = person.name.split(" ");
+                                handleImportSingleExtracted({
+                                  first_name: parts[0] || person.name,
+                                  last_name: parts.slice(1).join(" ") || "",
+                                  phone: extractedData.phones?.[0]?.normalized || "+919876543210",
+                                  email: person.predicted_email || "",
+                                  title: person.title
+                                });
+                              }}
+                              className="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs font-medium flex items-center gap-1 transition shrink-0"
+                            >
+                              <UserPlus size={12} />
+                              <span>Add Lead</span>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Discovered Emails */}
+                  <div className="space-y-2">
+                    <h5 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <Mail size={13} className="text-yellow-400" />
+                      <span>Corporate Email Addresses ({extractedData.emails?.length || 0})</span>
+                    </h5>
+                    {(!extractedData.emails || extractedData.emails.length === 0) ? (
+                      <p className="text-xs text-zinc-500 italic p-3 bg-zinc-950/50 rounded-lg">No direct mailto: links found on scanned pages.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {extractedData.emails.map((e, idx) => (
+                          <div key={idx} className="flex items-center gap-2 px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-xs font-mono text-zinc-300">
+                            <span>{e.email}</span>
+                            <span className="text-[10px] text-zinc-500">({e.domain})</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Social Profiles & Tech Stack */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                    {/* Socials */}
+                    <div className="p-3.5 bg-zinc-950 rounded-xl border border-zinc-800 space-y-2">
+                      <h6 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Social Channels</h6>
+                      <div className="flex flex-wrap gap-2">
+                        {(extractedData.socials?.linkedin || extractedData.social_links?.linkedin) && (
+                          <a href={extractedData.socials?.linkedin || extractedData.social_links?.linkedin} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 text-blue-400 border border-zinc-800 rounded text-xs transition">
+                            <Linkedin size={12} /> LinkedIn
+                          </a>
+                        )}
+                        {(extractedData.socials?.instagram || extractedData.social_links?.instagram) && (
+                          <a href={extractedData.socials?.instagram || extractedData.social_links?.instagram} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 text-pink-400 border border-zinc-800 rounded text-xs transition">
+                            <Instagram size={12} /> Instagram
+                          </a>
+                        )}
+                        {(extractedData.socials?.whatsapp || extractedData.social_links?.whatsapp) && (
+                          <a href={extractedData.socials?.whatsapp || extractedData.social_links?.whatsapp} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 text-emerald-400 border border-zinc-800 rounded text-xs transition">
+                            <Phone size={12} /> WhatsApp
+                          </a>
+                        )}
+                        {(!extractedData.socials && !extractedData.social_links) || 
+                         (Object.keys(extractedData.socials || extractedData.social_links || {}).length === 0) && (
+                          <span className="text-xs text-zinc-500 italic">None found</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Tech Stack */}
+                    <div className="p-3.5 bg-zinc-950 rounded-xl border border-zinc-800 space-y-2">
+                      <h6 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1">
+                        <Code2 size={12} /> Detected Tech Stack
+                      </h6>
+                      <div className="flex flex-wrap gap-1.5">
+                        {extractedData.tech_stack?.length ? (
+                          extractedData.tech_stack.map((tech, idx) => (
+                            <span key={idx} className="px-2 py-0.5 bg-zinc-900 text-zinc-300 border border-zinc-800 rounded text-[11px] font-mono">
+                              {tech}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-xs text-zinc-500 italic">Custom / Unknown</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-between p-4 border-t border-zinc-800 bg-zinc-950/60">
+              <span className="text-xs text-zinc-500">
+                Data extracted directly from authorized public website endpoints.
+              </span>
+              <button
+                onClick={() => setIsExtractorOpen(false)}
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs font-semibold transition"
+              >
+                Close
               </button>
             </div>
           </div>

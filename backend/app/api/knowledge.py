@@ -33,13 +33,25 @@ def submit_crawl(
     if not valid:
         raise HTTPException(status_code=400, detail=f"SSRF Protection: {msg}")
 
-    # Use simulated content or fallback body
-    content = req.simulated_content or f"Business information for {domain}. Contact support at 1800-00-11."
+    # Use simulated content if provided (for offline tests), else fetch real page content
+    if req.simulated_content:
+        content = req.simulated_content
+        page_title = req.page_title or domain or "Page"
+    else:
+        import re
+        from backend.app.services.crawler import fetch_url_safely
+        success, fetched_html, final_url = fetch_url_safely(req.url, timeout=12.0)
+        if not success:
+            raise HTTPException(status_code=422, detail=f"Failed to crawl website: {fetched_html}")
+        content = fetched_html
+        title_m = re.search(r'(?is)<title[^>]*>(.*?)</title>', content)
+        page_title = title_m.group(1).strip() if title_m else (req.page_title or domain or "Page")
+
     result = ingest_crawled_content(
         db=db,
         organization_id=org_id,
         url=req.url,
-        page_title=req.page_title or domain or "Page",
+        page_title=page_title,
         raw_content=content,
         is_html=True
     )

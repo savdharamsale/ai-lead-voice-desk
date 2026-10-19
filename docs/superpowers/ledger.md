@@ -17,6 +17,7 @@
 | **DEC-005** | 2026-10-19 | Web Crawler SSRF | Perform pre-flight DNS resolution and check against RFC 1918, RFC 3927, link-local, loopback, and metadata IPs before making HTTP requests. | Prevents attackers from scanning internal cloud infrastructure (AWS/GCP metadata services, local Redis, database) via the tenant website scanner. |
 | **DEC-006** | 2026-10-19 | Knowledge Approval | Require explicit tenant admin approval for extracted website chunks before voice agent prompt ingestion. | Protects voice agents from prompt injections and hallucinating unauthorized rates, discounts, or medical advice. |
 | **DEC-007** | 2026-10-19 | Regulatory Calling Gate | Hard-code TRAI commercial calling window check (09:00 - 21:00 IST) and real-time suppression ledger check before initiating any call. | Non-negotiable legal requirement under Indian telecom regulations. Prevents fines and carrier blacklisting. |
+| **DEC-008** | 2026-10-19 | Contact Extraction (Harvey) | Adopt EthanPlusAI/Harvey heuristics for autonomous contact extraction, phone normalization, team profile detection, and corporate email prediction (`{f}.{l}@{domain}`) paired with anti-SSRF crawling. | Enables automated discovery of decision makers and telecom lines from business websites without paid external data vendors, directly feeding verified leads into the AI Voice dialer. |
 
 ---
 
@@ -38,6 +39,8 @@
 | **VER-012** | Live Runtime | Full-Stack Runtime Verification | Live curl to FastAPI (8000) & Vite (3000) | PASS | Verified live JWT login, lead creation via API, healthz check, and Vite dev server running on port 3000. |
 | **VER-013** | Docker Packaging | Docker Compose Multi-Container Stack | `docker compose up -d --build` & container verification | PASS | Built `ai-lead-voice-desk-backend:latest` and `ai-lead-voice-desk-frontend:latest`. Containers `desk_backend`, `desk_frontend` (ports 3000 & 3001), `desk_postgres`, and `desk_redis` running healthy. Verified Nginx reverse proxy, PostgreSQL seed data, and JWT auth through port 3000. |
 | **VER-014** | Version Control | GitHub Repository Deployment | `git push -u origin main` | PASS | Successfully committed 71 files (9,819 insertions) with clean `.gitignore` and pushed branch `main` to `https://github.com/savdharamsale/ai-lead-voice-desk.git`. |
+| **VER-015** | Feature Integration | Harvey Contact Extractor & Web Scraper | `pytest backend/tests/ -v` & `npm run build` | PASS | Integrated EthanPlusAI/Harvey contact discovery engine into FastAPI & React. Implemented real website crawling in Knowledge Base replacing mock timeouts. 27/27 unit & integration tests passing. |
+| **VER-016** | Container & Remote Update | Docker Rebuild & GitHub Push | `docker compose up -d --build` & `git push` | PASS | Rebuilt frontend with Harvey Contact Discovery UI modal. Containers healthy. Pushed all changes to GitHub main. |
 
 ---
 

@@ -91,3 +91,52 @@ def strip_html_boilerplate(html_content: str) -> str:
     # Normalize whitespace
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned
+
+
+def fetch_url_safely(url: str, timeout: float = 10.0) -> Tuple[bool, str, str]:
+    """
+    Safely fetches a URL after pre-flight DNS anti-SSRF validation.
+    Enforces maximum body size (5MB) and re-checks redirects.
+    Returns: (success, html_content_or_error, final_url)
+    """
+    import httpx
+
+    valid, msg, domain = validate_target_url(url)
+    if not valid:
+        return False, msg, url
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+    }
+
+    try:
+        with httpx.Client(timeout=timeout, follow_redirects=True, headers=headers) as client:
+            resp = client.get(url)
+            final_url = str(resp.url)
+            
+            # Re-verify redirect destination against SSRF
+            valid_redir, redir_msg, _ = validate_target_url(final_url)
+            if not valid_redir:
+                return False, f"Redirected to prohibited target: {redir_msg}", final_url
+
+            if resp.status_code >= 400:
+                return False, f"HTTP Error {resp.status_code} while fetching website", final_url
+
+            content_type = resp.headers.get("content-type", "")
+            if "text/html" not in content_type and "text/plain" not in content_type and "application/xml" not in content_type:
+                return False, f"Unsupported content type: {content_type}", final_url
+
+            # Body size check (5MB limit)
+            if len(resp.content) > 5 * 1024 * 1024:
+                return False, "Page exceeded maximum 5MB size limit", final_url
+
+            return True, resp.text, final_url
+
+    except httpx.ConnectError:
+        return False, f"Failed to connect to {domain}. Server may be offline or blocking requests.", url
+    except httpx.TimeoutException:
+        return False, f"Connection timed out after {timeout} seconds", url
+    except Exception as e:
+        return False, f"Error fetching webpage: {str(e)}", url
+

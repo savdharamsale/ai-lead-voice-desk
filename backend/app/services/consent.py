@@ -22,7 +22,7 @@ def normalize_indian_phone(phone_raw: str) -> Optional[str]:
         digits = cleaned[3:]
     elif cleaned.startswith("91") and len(cleaned) == 12:
         digits = cleaned[2:]
-    elif cleaned.startswith("0") and len(cleaned) == 11:
+    elif cleaned.startswith("0") and len(cleaned) in (11, 12):
         digits = cleaned[1:]
     else:
         digits = cleaned
@@ -30,6 +30,11 @@ def normalize_indian_phone(phone_raw: str) -> Optional[str]:
     # Valid Indian mobile number is 10 digits starting with 6, 7, 8, or 9
     if len(digits) == 10 and digits[0] in "6789":
         return f"+91{digits}"
+    
+    # Valid Indian landline is 10 digits starting with recognized STD codes (11, 20, 22, 33, 40, 44, 80, 120, 124, 79)
+    if len(digits) == 10 and any(digits.startswith(std) for std in ("11", "20", "22", "33", "40", "44", "80", "120", "124", "79")):
+        return f"+91{digits}"
+
     return None
 
 

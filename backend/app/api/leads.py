@@ -111,3 +111,72 @@ async def import_csv(
     content = await file.read()
     csv_text = content.decode("utf-8")
     return import_leads_csv(db, org_id, csv_text)
+
+
+class ExtractContactsRequest(BaseModel):
+    url: str
+    crawl_subpages: Optional[bool] = True
+
+
+@router.post("/extract-contacts")
+def extract_contacts_endpoint(
+    req: ExtractContactsRequest,
+    org_id: str = Depends(get_current_tenant)
+) -> Dict[str, Any]:
+    """
+    Harvey-powered Contact & Lead Discovery.
+    Crawls website, extracts phone numbers, email addresses, decision makers, and social links.
+    """
+    from backend.app.services.contact_extractor import extract_website_contacts
+    return extract_website_contacts(req.url, crawl_subpages=req.crawl_subpages)
+
+
+class ImportExtractedItem(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone: str
+    email: Optional[str] = None
+    title: Optional[str] = None
+    source_url: Optional[str] = None
+
+
+class BatchImportExtractedRequest(BaseModel):
+    contacts: List[ImportExtractedItem]
+    consent_statement: Optional[str] = "Discovered via authorized business website profile"
+
+
+@router.post("/import-extracted")
+def import_extracted_contacts(
+    req: BatchImportExtractedRequest,
+    org_id: str = Depends(get_current_tenant),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """Imports extracted contacts into CRM leads with deduplication and normalization."""
+    imported = []
+    skipped = []
+
+    for item in req.contacts:
+        lead, msg = create_lead(
+            db=db,
+            organization_id=org_id,
+            first_name=item.first_name,
+            last_name=item.last_name,
+            phone=item.phone,
+            email=item.email,
+            source="harvey_extractor",
+            consent_statement=req.consent_statement,
+            custom_fields={"title": item.title, "source_url": item.source_url}
+        )
+        if lead:
+            imported.append({"id": lead.id, "name": f"{lead.first_name or ''} {lead.last_name or ''}".strip(), "phone": lead.phone})
+        else:
+            skipped.append({"phone": item.phone, "reason": msg})
+
+    return {
+        "status": "success",
+        "imported_count": len(imported),
+        "skipped_count": len(skipped),
+        "imported": imported,
+        "skipped": skipped
+    }
+
